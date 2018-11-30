@@ -85,7 +85,7 @@ static PLUGIN_INFORMATION info = {
         PLUGIN_NAME,              // Name
         "1.0.0",                  // Version
         0,                        // Flags
-        PLUGIN_TYPE_NOTIFY,       // Type
+        PLUGIN_TYPE_NOTIFICATION_DELIVERY,	// Type
         "1.0.0",                  // Interface version
         DEFAULT_CONFIG	          // Default plugin configuration
 };

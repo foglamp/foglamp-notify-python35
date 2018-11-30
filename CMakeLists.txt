@@ -15,7 +15,7 @@ project(python35)
 set(CMAKE_CXX_FLAGS "-std=c++11 -O3")
 
 # Set plugin type (south, north, filter)
-set(PLUGIN_TYPE "notify")
+set(PLUGIN_TYPE "filter")
 
 # Add here all needed FogLAMP libraries as list
 set(NEEDED_FOGLAMP_LIBS common-lib plugins-common-lib filters-common-lib services-common-lib)
@@ -30,7 +30,7 @@ find_path(Python3.5_INCLUDE NAMES Python.h PATHS ${_PYTHON_3.5_INCLUDES})
 if (NOT Python3.5_INCLUDE)
 	message(WARNING
 	" Python 3.5 header file 'Python.h' not found in /usr/include. \n"
-	" Target '${PROJECT_NAME}' notification plugin is not built.")
+	" Target '${PROJECT_NAME}' filter is not built.")
 	return()
 else()
 	message(STATUS "Found Python 3.5 header file 'Python.h' in " ${Python3.5_INCLUDE})
@@ -91,6 +91,11 @@ target_link_libraries(${PROJECT_NAME} -lpython3.5m)
 
 # Set the build version 
 set_target_properties(${PROJECT_NAME} PROPERTIES SOVERSION 1)
+
+add_executable(test_py main.cpp)
+target_link_libraries(test_py ${NEEDED_FOGLAMP_LIBS})
+target_link_libraries(test_py python3.5m)
+
 
 set(FOGLAMP_INSTALL "" CACHE INTERNAL "")
 # Install library
