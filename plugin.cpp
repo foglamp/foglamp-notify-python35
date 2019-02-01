@@ -148,23 +148,6 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config,
 		}
 	}
 
-	if (info->pythonScript.empty())
-	{
-		// Do nothing
-		Logger::getLogger()->warn("Notification plugin '%s', "
-					  "called without a Python 3.5 script. "
-					  "Check 'script' item in '%s' configuration. "
-					  "Notification plugin has been disabled.",
-					  PLUGIN_NAME,
-					  handle->getConfig().getName().c_str());
-
-		// Force disable
-		handle->disableFilter();
-
-		// Return filter handle
-		return (PLUGIN_HANDLE)info;
-	}
-		
 	// Embedded Python 3.5 program name
 	wchar_t *programName = Py_DecodeLocale(config->getName().c_str(), NULL);
 	Py_SetProgramName(programName);
@@ -186,6 +169,27 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config,
 	// Remove temp object
 	Py_CLEAR(pPath);
 
+	// Import script as module
+	if (info->pythonScript.empty())
+	{
+		// Do nothing
+		Logger::getLogger()->warn("Notification plugin '%s', "
+					  "called without a Python 3.5 script. "
+					  "Check 'script' item in '%s' configuration. "
+					  "Notification plugin has been disabled.",
+					  PLUGIN_NAME,
+					  handle->getConfig().getName().c_str());
+
+		// Force disable
+		handle->disableFilter();
+
+		info->pModule = NULL;
+		info->pFunc = NULL;
+
+		// Return filter handle
+		return (PLUGIN_HANDLE)info;
+	}
+		
 	// Import script as module
 	// NOTE:
 	// Script file name is:
@@ -322,8 +326,10 @@ void plugin_shutdown(PLUGIN_HANDLE *handle)
 
 	// Cleanup Python 3.5
 	Py_Finalize();
+
+	// Cleanup memory
 	delete filter;
-	delete handle;
+	delete info;
 }
 
 // End of extern "C"
