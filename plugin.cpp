@@ -148,29 +148,12 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config,
 		}
 	}
 
-	if (info->pythonScript.empty())
-	{
-		// Do nothing
-		Logger::getLogger()->warn("Notification plugin '%s', "
-					  "called without a Python 3.5 script. "
-					  "Check 'script' item in '%s' configuration. "
-					  "Notification plugin has been disabled.",
-					  PLUGIN_NAME,
-					  handle->getConfig().getName().c_str());
-
-		// Force disable
-		handle->disableFilter();
-
-		// Return filter handle
-		return (PLUGIN_HANDLE)info;
-	}
-		
 	// Embedded Python 3.5 program name
 	wchar_t *programName = Py_DecodeLocale(config->getName().c_str(), NULL);
-    Py_SetProgramName(programName);
+	Py_SetProgramName(programName);
 	PyMem_RawFree(programName);
 	// Embedded Python 3.5 initialisation
-    Py_Initialize();
+	Py_Initialize();
 
 	// Get FogLAMP Data dir
 	string filtersPath = getDataDir();
@@ -186,6 +169,27 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config,
 	// Remove temp object
 	Py_CLEAR(pPath);
 
+	// Import script as module
+	if (info->pythonScript.empty())
+	{
+		// Do nothing
+		Logger::getLogger()->warn("Notification plugin '%s', "
+					  "called without a Python 3.5 script. "
+					  "Check 'script' item in '%s' configuration. "
+					  "Notification plugin has been disabled.",
+					  PLUGIN_NAME,
+					  handle->getConfig().getName().c_str());
+
+		// Force disable
+		handle->disableFilter();
+
+		info->pModule = NULL;
+		info->pFunc = NULL;
+
+		// Return filter handle
+		return (PLUGIN_HANDLE)info;
+	}
+		
 	// Import script as module
 	// NOTE:
 	// Script file name is:
@@ -256,16 +260,19 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config,
 }
 
 /**
- * Ingest a set of readings into the plugin for processing
+ * Deliver received notification data
  *
- * NOTE: in case of any error, the input readings will be passed
- * onwards (untouched)
- *
- * @param handle	The plugin handle returned from plugin_init
- * @param readingSet	The readings to process
+ * @param handle		The plugin handle returned from plugin_init
+ * @param deliveryName		The delivery category name
+ * @param notificationName	The notification name
+ * @param triggerReason		The trigger reason for notification
+ * @param message		The message from notification
  */
-void plugin_deliver(PLUGIN_HANDLE *handle,
-		   std::string &message)
+bool plugin_deliver(PLUGIN_HANDLE handle,
+                    const std::string& deliveryName,
+                    const std::string& notificationName,
+                    const std::string& triggerReason,
+                    const std::string& message)
 {
 	PLUGIN_INFO *info = (PLUGIN_INFO *) handle;
 	FogLampFilter* filter = info->handle;
@@ -273,7 +280,7 @@ void plugin_deliver(PLUGIN_HANDLE *handle,
 	if (!filter->isEnabled())
 	{
 		// Current filter is not active: just return
-		return;
+		return false;
 	}
 	
 	// Call Python method passing an object
@@ -311,7 +318,6 @@ void plugin_shutdown(PLUGIN_HANDLE *handle)
 {
 	PLUGIN_INFO *info = (PLUGIN_INFO *) handle;
 	FogLampFilter* filter = info->handle;
-	delete filter;
 
 	// Decrement pModule reference count
 	Py_CLEAR(info->pModule);
@@ -320,6 +326,10 @@ void plugin_shutdown(PLUGIN_HANDLE *handle)
 
 	// Cleanup Python 3.5
 	Py_Finalize();
+
+	// Cleanup memory
+	delete filter;
+	delete info;
 }
 
 // End of extern "C"
