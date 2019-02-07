@@ -21,6 +21,7 @@
 #include <utils.h>
 
 #include <Python.h>
+#include <version.h>
 
 // Relative path to FOGLAMP_DATA
 #define PYTHON_FILTERS_PATH "/scripts"
@@ -83,7 +84,7 @@ extern "C" {
  */
 static PLUGIN_INFORMATION info = {
         PLUGIN_NAME,                              // Name
-        "1.0.0",                                  // Version
+        VERSION,                                  // Version
         0,                                        // Flags
         PLUGIN_TYPE_NOTIFICATION_DELIVERY,        // Type
         "1.0.0",                                  // Interface version
