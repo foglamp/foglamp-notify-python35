@@ -26,7 +26,7 @@ add_custom_command(
   COMMENT "Generating version header"
   VERBATIM
 )
-include_directories(${CMAKE_BINARY_DIR}
+include_directories(${CMAKE_BINARY_DIR})
 
 # Add here all needed FogLAMP libraries as list
 set(NEEDED_FOGLAMP_LIBS common-lib plugins-common-lib filters-common-lib services-common-lib)
