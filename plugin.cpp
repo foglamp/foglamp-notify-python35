@@ -52,17 +52,20 @@
 // Filter default configuration
 #define DEFAULT_CONFIG "{\"plugin\" : { \"description\" : \"Python 3.5 notification plugin\", " \
                        		"\"type\" : \"string\", " \
-				"\"default\" : \"" PLUGIN_NAME "\" }, " \
+				"\"default\" : \"" PLUGIN_NAME "\", \"readonly\" : \"true\" }, " \
 			 "\"enable\": {\"description\": \"A switch that can be used to enable or disable execution of " \
 					 "the Python 3.5 notification plugin.\", " \
 				"\"type\": \"boolean\", " \
+				"\"displayName\" : \"Enabled\", " \
 				"\"default\": \"false\" }, " \
 			"\"config\" : {\"description\" : \"Python 3.5 filter configuration.\", " \
 				"\"type\" : \"JSON\", " \
+				"\"displayName\" : \"Configuration\", " \
 				"\"default\" : {}}, " \
 			"\"script\" : {\"description\" : \"Python 3.5 module to load.\", " \
 				"\"type\": \"script\", " \
-				"   \"default\": \"" SCRIPT_NAME "\"} }"
+				"\"displayName\" : \"Python script\", " \
+				"\"default\": \"" SCRIPT_NAME "\"} }"
 using namespace std;
 
 typedef struct
@@ -211,6 +214,28 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config,
 			     "");
 
 	// 2) Import Python script
+	// check first method name (substring of scriptname) has name SCRIPT_NAME
+	if (filterMethod.compare(SCRIPT_NAME) != 0)
+	{
+		Logger::getLogger()->warn("Notification plugin '%s', "
+					  "called Python 3.5 script name '%s' does not end with name '%s'. "
+					  "Check 'script' item in '%s' configuration. "
+					  "Notification plugin has been disabled.",
+					  PLUGIN_NAME,
+					  info->pythonScript.c_str(),
+					  SCRIPT_NAME,
+					  handle->getConfig().getName().c_str());
+
+		// Force disable
+		handle->disableFilter();
+
+		info->pModule = NULL;
+		info->pFunc = NULL;
+
+		// Return filter handle
+		return (PLUGIN_HANDLE)info;
+	}
+		
 	info->pModule = PyImport_ImportModule(info->pythonScript.c_str());
 
 	// Check whether the Python module has been imported
@@ -228,13 +253,11 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config,
 					   info->pythonScript.c_str(),
 					   filtersPath.c_str());
 
-		// This will abort the filter pipeline set up
 		return NULL;
 	}
 
 	// Fetch filter method in loaded object
 	info->pFunc = PyObject_GetAttrString(info->pModule, filterMethod.c_str());
-
 	if (!PyCallable_Check(info->pFunc))
 	{
 		// Failure
@@ -243,16 +266,16 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config,
 			logErrorMessage();
 		}
 
-		Logger::getLogger()->fatal("Notification plugin %s (%s) error: cannot find Python 3.5 method "
+		Logger::getLogger()->fatal("Notification plugin %s (%s) error: cannot "
+					   "find Python 3.5 method "
 					   "'%s' in loaded module '%s.py'",
 					   PLUGIN_NAME,
 					   handle->getConfig().getName().c_str(),
-					   info->pythonScript.c_str(),
+					   filterMethod.c_str(),
 					   info->pythonScript.c_str());
 		Py_CLEAR(info->pModule);
 		Py_CLEAR(info->pFunc);
 
-		// This will abort the filter pipeline set up
 		return NULL;
 	}
 	
