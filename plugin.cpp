@@ -5,7 +5,7 @@
  *
  * Released under the Apache 2.0 Licence
  *
- * Author: Amandeep Singh Arora
+ * Author: Amandeep Singh Arora, Massimiliano Pinto
  */
 
 #include <plugin_api.h>
@@ -23,12 +23,7 @@
 #include <Python.h>
 #include <version.h>
 
-// Relative path to FOGLAMP_DATA
-#define PYTHON_FILTERS_PATH "/scripts"
-#define PLUGIN_NAME "python35"
-#define PYTHON_SCRIPT_METHOD_PREFIX "_script_"
-#define PYTHON_SCRIPT_FILENAME_EXTENSION ".py"
-#define SCRIPT_CONFIG_ITEM_NAME "script"
+#include "notify_python35.h"
 
 /**
  * The Python 3.5 script module to load is set in
@@ -44,12 +39,9 @@
  * the same as required.
  */
 
-// Filter configuration method
-//#define DEFAULT_FILTER_CONFIG_METHOD "set_filter_config"
-
 #define SCRIPT_NAME  "notify35"
 
-// Filter default configuration
+// Delivery plugin default configuration
 #define DEFAULT_CONFIG "{\"plugin\" : { \"description\" : \"Python 3.5 notification plugin\", " \
                        		"\"type\" : \"string\", " \
 				"\"default\" : \"" PLUGIN_NAME "\", \"readonly\" : \"true\" }, " \
@@ -66,20 +58,13 @@
 				"\"type\": \"script\", " \
 				"\"displayName\" : \"Python script\", " \
 				"\"default\": \"" SCRIPT_NAME "\"} }"
+
 using namespace std;
 
-typedef struct
-{
-	FogLampFilter *handle;
-	PyObject* pModule; // Python 3.5 loaded filter module handle
-	PyObject* pFunc; // Python 3.5 callable method handle
-	string pythonScript; // Python 3.5 script name
-} PLUGIN_INFO;
-
-void logErrorMessage();
+bool pythonInitialised = false;
 
 /**
- * The Filter plugin interface
+ * The Delivery plugin interface
  */
 extern "C" {
 /**
@@ -118,169 +103,67 @@ PLUGIN_INFORMATION *plugin_info()
  * @param output	The output stream (function pointer) to which data is passed
  * @return		An opaque handle that is used in all subsequent calls to the plugin
  */
-PLUGIN_HANDLE plugin_init(ConfigCategory* config,
-			  OUTPUT_HANDLE *outHandle,
-			  OUTPUT_STREAM output)
+PLUGIN_HANDLE plugin_init(ConfigCategory* config)
 {
-	FogLampFilter* handle = new FogLampFilter(PLUGIN_NAME,
-						  *config,
-						  outHandle,
-						  output);
-	PLUGIN_INFO *info = new PLUGIN_INFO;
-	info->handle = handle;
-	info->pythonScript = string("");
-
-	// Check whether we have a Python 3.5 script file to import
-	if (handle->getConfig().itemExists(SCRIPT_CONFIG_ITEM_NAME))
-	{
-		try
-		{
-			// Get Python script file from "file" attibute of "scipt" item
-			info->pythonScript = handle->getConfig().getItemAttribute(SCRIPT_CONFIG_ITEM_NAME,
-									    ConfigCategory::FILE_ATTR);
-		        // Just take file name and remove path
-			std::size_t found = info->pythonScript.find_last_of("/");
-			info->pythonScript = info->pythonScript.substr(found + 1);
-		}
-		catch (ConfigItemAttributeNotFound* e)
-		{
-			delete e;
-		}
-		catch (exception* e)
-		{
-			delete e;
-		}
-	}
-
 	// Embedded Python 3.5 program name
 	wchar_t *programName = Py_DecodeLocale(config->getName().c_str(), NULL);
 	Py_SetProgramName(programName);
 	PyMem_RawFree(programName);
 	// Embedded Python 3.5 initialisation
-	Py_Initialize();
+	// Check first the interpreter is already set
+	if (!Py_IsInitialized())
+	{
+		Py_Initialize();
+		pythonInitialised = true;
+	}
 
-	// Get FogLAMP Data dir
-	string filtersPath = getDataDir();
-	// Add filters dir
-	filtersPath += PYTHON_FILTERS_PATH;
+	// Instantiate plugin class
+	NotifyPython35* notify = new NotifyPython35(config);
+	// Add filters dir: pass FogLAMP Data dir
+	notify->setScriptsPath(getDataDir());
 
 	// Set Python path for embedded Python 3.5
 	// Get current sys.path. borrowed reference
 	PyObject* sysPath = PySys_GetObject((char *)string("path").c_str());
 	// Add FogLAMP python filters path
-	PyObject* pPath = PyUnicode_DecodeFSDefault((char *)filtersPath.c_str());
+	PyObject* pPath = PyUnicode_DecodeFSDefault((char *)notify->getScriptsPath().c_str());
 	PyList_Insert(sysPath, 0, pPath);
 	// Remove temp object
 	Py_CLEAR(pPath);
 
-	// Import script as module
-	if (info->pythonScript.empty())
+	// Check first we have a Python script to load
+	if (notify->getScriptName().empty())
 	{
-		// Do nothing
-		Logger::getLogger()->warn("Notification plugin '%s', "
-					  "called without a Python 3.5 script. "
-					  "Check 'script' item in '%s' configuration. "
-					  "Notification plugin has been disabled.",
-					  PLUGIN_NAME,
-					  handle->getConfig().getName().c_str());
-
 		// Force disable
-		handle->disableFilter();
-
-		info->pModule = NULL;
-		info->pFunc = NULL;
+		notify->disableDelivery();
 
 		// Return filter handle
-		return (PLUGIN_HANDLE)info;
+		return (PLUGIN_HANDLE)notify;
 	}
-		
-	// Import script as module
-	// NOTE:
-	// Script file name is:
-	// lowercase(categoryName) + _script_ + methodName + ".py"
 
-	// 1) Get methodName
-	std::size_t found = info->pythonScript.rfind(PYTHON_SCRIPT_METHOD_PREFIX);
-	string filterMethod = info->pythonScript.substr(found + strlen(PYTHON_SCRIPT_METHOD_PREFIX));
-	// Remove .py from filterMethod
-	found = filterMethod.rfind(PYTHON_SCRIPT_FILENAME_EXTENSION);
-	filterMethod.replace(found,
-			     strlen(PYTHON_SCRIPT_FILENAME_EXTENSION),
-			     "");
-	// Remove .py from pythonScript
-	found = info->pythonScript.rfind(PYTHON_SCRIPT_FILENAME_EXTENSION);
-	info->pythonScript.replace(found,
-			     strlen(PYTHON_SCRIPT_FILENAME_EXTENSION),
-			     "");
 
-	// 2) Import Python script
-	// check first method name (substring of scriptname) has name SCRIPT_NAME
-	if (filterMethod.compare(SCRIPT_NAME) != 0)
+	// Configure filter
+	notify->lock();
+	bool ret = notify->configure();
+	notify->unlock();
+
+	// Configure filter
+	if (!ret)
 	{
-		Logger::getLogger()->warn("Notification plugin '%s', "
-					  "called Python 3.5 script name '%s' does not end with name '%s'. "
-					  "Check 'script' item in '%s' configuration. "
-					  "Notification plugin has been disabled.",
-					  PLUGIN_NAME,
-					  info->pythonScript.c_str(),
-					  SCRIPT_NAME,
-					  handle->getConfig().getName().c_str());
-
-		// Force disable
-		handle->disableFilter();
-
-		info->pModule = NULL;
-		info->pFunc = NULL;
-
-		// Return filter handle
-		return (PLUGIN_HANDLE)info;
-	}
-		
-	info->pModule = PyImport_ImportModule(info->pythonScript.c_str());
-
-	// Check whether the Python module has been imported
-	if (!info->pModule)
-	{
-		// Failure
-		if (PyErr_Occurred())
+		// Cleanup Python 3.5
+		if (pythonInitialised)
 		{
-			logErrorMessage();
-		}
-		Logger::getLogger()->fatal("Notification plugin '%s' (%s), cannot import Python 3.5 script "
-					   "'%s' from '%s'",
-					   PLUGIN_NAME,
-					   handle->getConfig().getName().c_str(),
-					   info->pythonScript.c_str(),
-					   filtersPath.c_str());
-
-		return NULL;
-	}
-
-	// Fetch filter method in loaded object
-	info->pFunc = PyObject_GetAttrString(info->pModule, filterMethod.c_str());
-	if (!PyCallable_Check(info->pFunc))
-	{
-		// Failure
-		if (PyErr_Occurred())
-		{
-			logErrorMessage();
+			Py_Finalize();
 		}
 
-		Logger::getLogger()->fatal("Notification plugin %s (%s) error: cannot "
-					   "find Python 3.5 method "
-					   "'%s' in loaded module '%s.py'",
-					   PLUGIN_NAME,
-					   handle->getConfig().getName().c_str(),
-					   filterMethod.c_str(),
-					   info->pythonScript.c_str());
-		Py_CLEAR(info->pModule);
-		Py_CLEAR(info->pFunc);
-
+		// This will abort the filter pipeline set up
 		return NULL;
 	}
-	
-	// Return filter handle
-	return (PLUGIN_HANDLE)info;
+	else
+	{
+		// Return plugin handle
+		return (PLUGIN_HANDLE)notify;
+	}
 }
 
 /**
@@ -298,41 +181,12 @@ bool plugin_deliver(PLUGIN_HANDLE handle,
                     const std::string& triggerReason,
                     const std::string& message)
 {
-	PLUGIN_INFO *info = (PLUGIN_INFO *) handle;
-	FogLampFilter* filter = info->handle;
+	NotifyPython35* notify = (NotifyPython35 *) handle;
 
-	if (!filter->isEnabled())
-	{
-		// Current filter is not active: just return
-		return false;
-	}
-	
-	// Call Python method passing an object
-	PyObject* pReturn = PyObject_CallFunction(info->pFunc,
-						  "s",
-						  message.c_str());
-
-	// Check return status
-	if (!pReturn)
-	{
-		// Errors while getting result object
-		Logger::getLogger()->error("Notification plugin '%s' (%s), script '%s', "
-					   "filter error, action: %s",
-					   PLUGIN_NAME,
-					   filter->getConfig().getName().c_str(),
-					   info->pythonScript.c_str(),
-					   "pass unfiltered data onwards");
-
-		// Errors while getting result object
-		logErrorMessage();
-	}
-	else
-	{
-		Logger::getLogger()->info("PyObject_CallFunction() succeeded");
-		
-		// Remove pReturn object
-		Py_CLEAR(pReturn);
-	}
+	return notify->notify(deliveryName,
+			      notificationName,
+			      triggerReason,
+			      message);
 }
 
 /**
@@ -340,56 +194,30 @@ bool plugin_deliver(PLUGIN_HANDLE handle,
  */
 void plugin_shutdown(PLUGIN_HANDLE *handle)
 {
-	PLUGIN_INFO *info = (PLUGIN_INFO *) handle;
-	FogLampFilter* filter = info->handle;
+	NotifyPython35* notify = (NotifyPython35 *) handle;
 
 	// Decrement pModule reference count
-	Py_CLEAR(info->pModule);
+	Py_CLEAR(notify->m_pModule);
 	// Decrement pFunc reference count
-	Py_CLEAR(info->pFunc);
+	Py_CLEAR(notify->m_pFunc);
 
 	// Cleanup Python 3.5
 	Py_Finalize();
 
 	// Cleanup memory
-	delete filter;
-	delete info;
+	delete notify;
+}
+
+/**
+ * Reconfigure the plugin
+ */
+void plugin_reconfigure(PLUGIN_HANDLE *handle,
+			string& newConfig)
+{
+	NotifyPython35* notify = (NotifyPython35 *)handle;
+	
+	notify->reconfigure(newConfig);
 }
 
 // End of extern "C"
 };
-
-/**
- * Log current Python 3.5 error message
- *
- */
-void logErrorMessage()
-{
-	//Get error message
-	PyObject *pType, *pValue, *pTraceback;
-	PyErr_Fetch(&pType, &pValue, &pTraceback);
-
-	// NOTE from :
-	// https://docs.python.org/2/c-api/exceptions.html
-	//
-	// The value and traceback object may be NULL
-	// even when the type object is not.	
-	const char* pErrorMessage = pValue ?
-				    PyBytes_AsString(pValue) :
-				    "no error description.";
-
-	Logger::getLogger()->fatal("Notification plugin '%s', Error '%s'",
-				   PLUGIN_NAME,
-				   pErrorMessage ?
-				   pErrorMessage :
-				   "no description");
-
-	// Reset error
-	PyErr_Clear();
-
-	// Remove references
-	Py_CLEAR(pType);
-	Py_CLEAR(pValue);
-	Py_CLEAR(pTraceback);
-}
-
