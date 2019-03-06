@@ -32,7 +32,7 @@ include_directories(${CMAKE_BINARY_DIR})
 set(NEEDED_FOGLAMP_LIBS common-lib plugins-common-lib filters-common-lib services-common-lib)
 
 # Find source files
-file(GLOB SOURCES plugin.cpp)
+file(GLOB SOURCES *.cpp)
 
 # Find python3.x dev/lib package
 find_package(PythonLibs 3 REQUIRED)
