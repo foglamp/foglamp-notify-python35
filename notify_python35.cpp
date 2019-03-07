@@ -323,6 +323,10 @@ void NotifyPython35::logErrorMessage()
         //Get error message
         PyObject *pType, *pValue, *pTraceback;
         PyErr_Fetch(&pType, &pValue, &pTraceback);
+        PyErr_NormalizeException(&pType, &pValue, &pTraceback);
+
+        PyObject* str_exc_value = PyObject_Repr(pValue);
+        PyObject* pyExcValueStr = PyUnicode_AsEncodedString(str_exc_value, "utf-8", "Error ~");
 
         // NOTE from :
         // https://docs.python.org/2/c-api/exceptions.html
@@ -330,14 +334,12 @@ void NotifyPython35::logErrorMessage()
         // The value and traceback object may be NULL
         // even when the type object is not.    
         const char* pErrorMessage = pValue ?
-                                    PyBytes_AsString(pValue) :
+                                    PyBytes_AsString(pyExcValueStr) :
                                     "no error description.";
 
         Logger::getLogger()->fatal("Notification plugin '%s', Error '%s'",
                                    PLUGIN_NAME,
-                                   pErrorMessage ?
-                                   pErrorMessage :
-                                   "no description");
+                                   pErrorMessage);
 
         // Reset error
         PyErr_Clear();
@@ -346,4 +348,6 @@ void NotifyPython35::logErrorMessage()
         Py_CLEAR(pType);
         Py_CLEAR(pValue);
         Py_CLEAR(pTraceback);
+        Py_CLEAR(str_exc_value);
+        Py_CLEAR(pyExcValueStr);
 }
