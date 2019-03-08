@@ -23,6 +23,7 @@ set -e
 
 architecture="none"
 plugin_type="notify"
+plugin_type_install="notificationDelivery"
 plugin_name="python35"
 plugin_install_dirname=${plugin_name}
 usage="$(basename "$0") [help|clean|cleanall]
@@ -140,8 +141,8 @@ sed -i "s/Depends: foglamp/Depends: foglamp (${foglamp_version})/g" DEBIAN/contr
 
 mkdir -p usr/local/foglamp
 cd usr/local/foglamp
-mkdir -p "plugins/${plugin_type}/${plugin_install_dirname}"
-cp -R --preserve=links ${GIT_ROOT}/build/lib*.so* "plugins/${plugin_type}/${plugin_install_dirname}"
+mkdir -p "plugins/${plugin_type_install}/${plugin_install_dirname}"
+cp -R --preserve=links ${GIT_ROOT}/build/lib*.so* "plugins/${plugin_type_install}/${plugin_install_dirname}"
 echo "Done."
 
 # Build the package

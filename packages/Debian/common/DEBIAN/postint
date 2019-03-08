@@ -28,7 +28,7 @@
 set -e
 
 set_files_ownership () {
-    chown -R root:root /usr/local/foglamp/plugins/notif/python35
+    chown -R root:root /usr/local/foglamp/plugins/notificationDelivery/python35
 }
 
 set_files_ownership
