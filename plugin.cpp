@@ -48,15 +48,15 @@
 			 "\"enable\": {\"description\": \"A switch that can be used to enable or disable execution of " \
 					 "the Python 3.5 notification plugin.\", " \
 				"\"type\": \"boolean\", " \
-				"\"displayName\" : \"Enabled\", " \
+				"\"displayName\" : \"Enabled\", \"order\" : \"3\", " \
 				"\"default\": \"false\" }, " \
 			"\"config\" : {\"description\" : \"Python 3.5 filter configuration.\", " \
 				"\"type\" : \"JSON\", " \
-				"\"displayName\" : \"Configuration\", " \
-				"\"default\" : {}}, " \
+				"\"displayName\" : \"Configuration\", \"order\" : \"1\", " \
+				"\"default\" : \"{}\"}, " \
 			"\"script\" : {\"description\" : \"Python 3.5 module to load.\", " \
 				"\"type\": \"script\", " \
-				"\"displayName\" : \"Python script\", " \
+				"\"displayName\" : \"Python script\", \"order\" : \"2\", " \
 				"\"default\": \"" SCRIPT_NAME "\"} }"
 
 using namespace std;
