@@ -38,26 +38,42 @@
  * a message string indicating notification trigger and processes 
  * the same as required.
  */
+#define TO_STRING(...) DEFER(TO_STRING_)(__VA_ARGS__)
+#define DEFER(x) x
+#define TO_STRING_(...) #__VA_ARGS__
+#define QUOTE(...) TO_STRING(__VA_ARGS__)
 
-#define SCRIPT_NAME  "notify35"
 
 // Delivery plugin default configuration
-#define DEFAULT_CONFIG "{\"plugin\" : { \"description\" : \"Python 3.5 notification plugin\", " \
-                       		"\"type\" : \"string\", " \
-				"\"default\" : \"" PLUGIN_NAME "\", \"readonly\" : \"true\" }, " \
-			 "\"enable\": {\"description\": \"A switch that can be used to enable or disable execution of " \
-					 "the Python 3.5 notification plugin.\", " \
-				"\"type\": \"boolean\", " \
-				"\"displayName\" : \"Enabled\", \"order\" : \"3\", " \
-				"\"default\": \"false\" }, " \
-			"\"config\" : {\"description\" : \"Python 3.5 filter configuration.\", " \
-				"\"type\" : \"JSON\", " \
-				"\"displayName\" : \"Configuration\", \"order\" : \"1\", " \
-				"\"default\" : \"{}\"}, " \
-			"\"script\" : {\"description\" : \"Python 3.5 module to load.\", " \
-				"\"type\": \"script\", " \
-				"\"displayName\" : \"Python script\", \"order\" : \"2\", " \
-				"\"default\": \"" SCRIPT_NAME "\"} }"
+const char *default_config = QUOTE({
+	"plugin" : {
+	       	"description" : "Python 3.5 notification plugin",
+		"type" : "string",
+		"default" : PLUGIN_NAME,
+		"readonly" : "true"
+		},
+	"enable": {
+		"description": "A switch that can be used to enable or disable execution of the Python 3.5 notification plugin.", 
+		"type": "boolean", 
+		"displayName" : "Enabled",
+		"order" : "3", 
+		"default": "false"
+		}, 
+	"config" : {
+		"description" : "Python 3.5 filter configuration.", 
+		"type" : "JSON", 
+		"displayName" : "Configuration",
+		"order" : "1", 
+		"default" : "{}"
+		}, 
+	"script" : {
+		"description" : "Python 3.5 script to load.", 
+		"type": "script", 
+		"displayName" : "Python script",
+		"order" : "2", 
+		"default": ""
+		}
+	});
 
 using namespace std;
 
@@ -76,7 +92,7 @@ static PLUGIN_INFORMATION info = {
         0,                                        // Flags
         PLUGIN_TYPE_NOTIFICATION_DELIVERY,        // Type
         "1.0.0",                                  // Interface version
-        DEFAULT_CONFIG	                          // Default plugin configuration
+        default_config	                          // Default plugin configuration
 };
 
 /**
