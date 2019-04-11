@@ -77,7 +77,8 @@ const char *default_config = QUOTE({
 
 using namespace std;
 
-bool pythonInitialised = false;
+// Call Python3.5 interpreter
+void interpreterStart(NotifyPython35* notify);
 
 /**
  * The Delivery plugin interface
@@ -121,42 +122,11 @@ PLUGIN_INFORMATION *plugin_info()
  */
 PLUGIN_HANDLE plugin_init(ConfigCategory* config)
 {
-	// Embedded Python 3.5 program name
-	wchar_t *programName = Py_DecodeLocale(config->getName().c_str(), NULL);
-	Py_SetProgramName(programName);
-	PyMem_RawFree(programName);
-	// Embedded Python 3.5 initialisation
-	// Check first the interpreter is already set
-	if (!Py_IsInitialized())
-	{
-		Py_Initialize();
-		pythonInitialised = true;
-	}
-
 	// Instantiate plugin class
 	NotifyPython35* notify = new NotifyPython35(config);
-	// Add filters dir: pass FogLAMP Data dir
-	notify->setScriptsPath(getDataDir());
 
-	// Set Python path for embedded Python 3.5
-	// Get current sys.path. borrowed reference
-	PyObject* sysPath = PySys_GetObject((char *)string("path").c_str());
-	// Add FogLAMP python filters path
-	PyObject* pPath = PyUnicode_DecodeFSDefault((char *)notify->getScriptsPath().c_str());
-	PyList_Insert(sysPath, 0, pPath);
-	// Remove temp object
-	Py_CLEAR(pPath);
-
-	// Check first we have a Python script to load
-	if (notify->getScriptName().empty())
-	{
-		// Force disable
-		notify->disableDelivery();
-
-		// Return filter handle
-		return (PLUGIN_HANDLE)notify;
-	}
-
+	// Setup Python 3.5 interpreter
+	interpreterStart(notify);
 
 	// Configure filter
 	notify->lock();
@@ -167,7 +137,7 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config)
 	if (!ret)
 	{
 		// Cleanup Python 3.5
-		if (pythonInitialised)
+		if (Py_IsInitialized())
 		{
 			Py_Finalize();
 		}
@@ -199,6 +169,20 @@ bool plugin_deliver(PLUGIN_HANDLE handle,
 {
 	NotifyPython35* notify = (NotifyPython35 *) handle;
 
+	// Check wether Python 3.5 interpreter is set
+	// It can be unset due to notification instance enable/disable via API
+	if (!Py_IsInitialized())
+	{
+		// Start the interpreter
+		interpreterStart(notify);
+
+		// Apply configuration
+		notify->lock();
+		notify->configure();
+		notify->unlock();
+	}
+
+	// Call notify method
 	return notify->notify(deliveryName,
 			      notificationName,
 			      triggerReason,
@@ -218,7 +202,13 @@ void plugin_shutdown(PLUGIN_HANDLE *handle)
 	Py_CLEAR(notify->m_pFunc);
 
 	// Cleanup Python 3.5
-	Py_Finalize();
+	if (Py_IsInitialized)
+	{
+		Py_Finalize();
+		Logger::getLogger()->debug("Python35 interpreter for '%s' "
+					   "delivery plugin has been removed",
+					   PLUGIN_NAME);
+	}
 
 	// Cleanup memory
 	delete notify;
@@ -237,3 +227,47 @@ void plugin_reconfigure(PLUGIN_HANDLE *handle,
 
 // End of extern "C"
 };
+
+/**
+ * Start the Python 3.5 interpreter
+ * and set scripts path and script name
+ *
+ * @param    notify		The notification class
+ *				the plugin is using
+ */
+void interpreterStart(NotifyPython35* notify)
+{
+	//Embedded Python 3.5 initialisation
+	// Check first the interpreter is already set
+	if (!Py_IsInitialized())
+	{
+		Py_Initialize();
+		Logger::getLogger()->debug("Python35 interpreter for '%s' "
+					   "delivery plugin has been initialized",
+					   PLUGIN_NAME);
+	}
+
+	// Embedded Python 3.5 program name
+	wchar_t *pName = Py_DecodeLocale(notify->getName().c_str(), NULL);
+	Py_SetProgramName(pName);
+	PyMem_RawFree(pName);
+
+	// Add filters dir: pass FogLAMP Data dir
+	notify->setScriptsPath(getDataDir());
+
+	// Set Python path for embedded Python 3.5
+	// Get current sys.path. borrowed reference
+	PyObject* sysPath = PySys_GetObject((char *)string("path").c_str());
+	// Add FogLAMP python filters path
+	PyObject* pPath = PyUnicode_DecodeFSDefault((char *)notify->getScriptsPath().c_str());
+	PyList_Insert(sysPath, 0, pPath);
+	// Remove temp object
+	Py_CLEAR(pPath);
+
+	// Check first we have a Python script to load
+	if (notify->getScriptName().empty())
+	{
+		// Force disable
+		notify->disableDelivery();
+	}
+}
