@@ -107,18 +107,32 @@ bool NotifyPython35::configure()
 	// Script file name is:
 	// lowercase(categoryName) + _script_ + methodName + ".py"
 
+	string filterMethod;
+	std::size_t found;
+
 	// 1) Get methodName
-	std::size_t found = m_pythonScript.rfind(PYTHON_SCRIPT_METHOD_PREFIX);
-	string filterMethod = m_pythonScript.substr(found + strlen(PYTHON_SCRIPT_METHOD_PREFIX));
+	found = m_pythonScript.rfind(PYTHON_SCRIPT_METHOD_PREFIX);
+	if (found != std::string::npos)
+	{
+		filterMethod = m_pythonScript.substr(found + strlen(PYTHON_SCRIPT_METHOD_PREFIX));
+	}
 	// Remove .py from filterMethod
 	found = filterMethod.rfind(PYTHON_SCRIPT_FILENAME_EXTENSION);
-	filterMethod.replace(found, strlen(PYTHON_SCRIPT_FILENAME_EXTENSION), "");
+	if (found != std::string::npos)
+	{
+		filterMethod.replace(found, strlen(PYTHON_SCRIPT_FILENAME_EXTENSION), "");
+	}
 	// Remove .py from pythonScript
 	found = m_pythonScript.rfind(PYTHON_SCRIPT_FILENAME_EXTENSION);
-	m_pythonScript.replace(found, strlen(PYTHON_SCRIPT_FILENAME_EXTENSION), "");
+	if (found != std::string::npos)
+	{
+		m_pythonScript.replace(found, strlen(PYTHON_SCRIPT_FILENAME_EXTENSION), "");
+	}
 
-
-	Logger::getLogger()->error("____ NOTIFY PYTHON35 " + m_pythonScript + ",  method = " + filterMethod);
+	Logger::getLogger()->debug("%s delivery plugin: script='%s', method='%s'",
+				   PLUGIN_NAME,
+				   m_pythonScript.c_str(),
+				   filterMethod.c_str());
 
 	// 2) Import Python script
 	// check first method name (substring of scriptname) has name SCRIPT_NAME
@@ -196,7 +210,9 @@ bool NotifyPython35::configure()
  */
 bool NotifyPython35::reconfigure(const std::string& newConfig)
 {
-	Logger::getLogger()->error("---Pythin 35 Notify RECONFIGURE called =" + newConfig);
+	Logger::getLogger()->debug("%s notification 'plugin_reconfigure' called = %s",
+				   PLUGIN_NAME,
+				   newConfig.c_str());
 
 	ConfigCategory category("new", newConfig);
 
@@ -265,6 +281,16 @@ bool NotifyPython35::notify(const std::string& deliveryName,
 			    const string& triggerReason,
 			    const string& customMessage)
 {
+	bool ret = false;
+
+	if (!Py_IsInitialized())
+	{
+		Logger::getLogger()->fatal("%s delivery plugin: Python 3.5 interpreter "
+					   "is not initialized",
+					   this->getName().c_str());
+		return false;
+	}
+
 	m_configMutex.lock();
         if (!m_enabled)
         {
@@ -281,8 +307,6 @@ bool NotifyPython35::notify(const std::string& deliveryName,
 
 	// Release lock
 	m_configMutex.unlock();
-
-	Logger::getLogger()->error("_____ PYTHOn35 deliver ...");
 
 	// Call Python method passing an object
 	PyObject* pReturn = PyObject_CallFunction(method,
@@ -305,13 +329,19 @@ bool NotifyPython35::notify(const std::string& deliveryName,
 	}
 	else
 	{
+		ret = true;
 		Logger::getLogger()->debug("PyObject_CallFunction() succeeded");
 
 		// Remove pReturn object
 		Py_CLEAR(pReturn);
 	}
 
-	return pReturn ? true : false;
+	Logger::getLogger()->debug("Notification '%s' 'plugin_delivery' "
+				   "called, return = %d",
+				   this->getName().c_str(),
+				   ret);
+
+	return ret;
 }
 
 /**
