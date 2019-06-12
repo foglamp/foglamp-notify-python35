@@ -21,6 +21,8 @@
 #define PYTHON_SCRIPT_FILENAME_EXTENSION ".py"
 #define SCRIPT_CONFIG_ITEM_NAME "script"
 
+extern void interpreterStart(NotifyPython35* notify);
+
 using namespace std;
 
 /**
@@ -218,6 +220,21 @@ bool NotifyPython35::reconfigure(const std::string& newConfig)
 
 	// Configuration change is protected by a lock
 	lock_guard<mutex> guard(m_configMutex);
+
+	if (Py_IsInitialized)
+	{
+		// Cleanup Loaded module first
+		Py_CLEAR(m_pModule);
+		m_pModule = NULL;
+		Py_CLEAR(m_pFunc);
+		m_pFunc = NULL;
+		m_pythonScript.clear();
+
+		// Remove Interpreter
+		Py_Finalize();
+		// Start interpreter, setting paths etc
+		interpreterStart(this);
+	}
 
 	// Set the enable flag
         if (category.itemExists("enable"))
