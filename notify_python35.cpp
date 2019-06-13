@@ -221,7 +221,7 @@ bool NotifyPython35::reconfigure(const std::string& newConfig)
 	// Configuration change is protected by a lock
 	lock_guard<mutex> guard(m_configMutex);
 
-	if (Py_IsInitialized)
+	if (Py_IsInitialized())
 	{
 		// Cleanup Loaded module first
 		Py_CLEAR(m_pModule);
