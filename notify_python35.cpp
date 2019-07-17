@@ -136,6 +136,7 @@ bool NotifyPython35::configure()
 				   m_pythonScript.c_str(),
 				   filterMethod.c_str());
 
+#if 0
 	// 2) Import Python script
 	// check first method name (substring of scriptname) has name SCRIPT_NAME
 	if (filterMethod.compare(SCRIPT_NAME) != 0)
@@ -157,6 +158,7 @@ bool NotifyPython35::configure()
 
 		return true;
 	}
+#endif
 
 	// Import Python 3.5 module
 	m_pModule = PyImport_ImportModule(m_pythonScript.c_str());
