@@ -36,10 +36,6 @@
  * a message string indicating notification trigger and processes 
  * the same as required.
  */
-#define TO_STRING(...) DEFER(TO_STRING_)(__VA_ARGS__)
-#define DEFER(x) x
-#define TO_STRING_(...) #__VA_ARGS__
-#define QUOTE(...) TO_STRING(__VA_ARGS__)
 
 
 // Delivery plugin default configuration
