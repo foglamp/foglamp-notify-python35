@@ -151,6 +151,12 @@ bool NotifyPython35::configure()
 		return true;
 	}
 
+	// Check the Python interpreter is set
+	if (!Py_IsInitialized())
+	{
+		interpreterStart(this);
+	}
+
 	// Import Python 3.5 module
 	m_pModule = PyImport_ImportModule(m_pythonScript.c_str());
 
