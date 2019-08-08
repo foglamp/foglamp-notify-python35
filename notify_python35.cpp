@@ -136,20 +136,12 @@ bool NotifyPython35::configure()
 				   m_pythonScript.c_str(),
 				   filterMethod.c_str());
 
-#if 0
 	// 2) Import Python script
-	// check first method name (substring of scriptname) has name SCRIPT_NAME
-	if (filterMethod.compare(SCRIPT_NAME) != 0)
+	// check first method name is empty:
+	// disable delivery, cleanup and return true
+	// This allows reconfiguration
+        if (filterMethod.empty())
 	{
-		Logger::getLogger()->warn("Notification plugin '%s', "
-					  "called Python 3.5 script name '%s' does not end with name '%s'. "
-					  "Check 'script' item in '%s' configuration. "
-					  "Notification plugin has been disabled.",
-					  PLUGIN_NAME,
-					  m_pythonScript.c_str(),
-					  SCRIPT_NAME,
-					  this->getName().c_str());
-
 		// Force disable
 		this->disableDelivery();
 
@@ -158,7 +150,6 @@ bool NotifyPython35::configure()
 
 		return true;
 	}
-#endif
 
 	// Import Python 3.5 module
 	m_pModule = PyImport_ImportModule(m_pythonScript.c_str());
