@@ -23,6 +23,8 @@
 
 #include "notify_python35.h"
 
+static void* libpython_handle = NULL;
+
 /**
  * The Python 3.5 script module to load is set in
  * 'script' config item and it doesn't need the trailing .py
@@ -124,6 +126,10 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config)
 		if (Py_IsInitialized())
 		{
 			Py_Finalize();
+			if (libpython_handle)
+			{
+				dlclose(libpython_handle);
+			}
 		}
 
 		// Free object
@@ -194,6 +200,10 @@ void plugin_shutdown(PLUGIN_HANDLE *handle)
 		Logger::getLogger()->debug("Python35 interpreter for '%s' "
 					   "delivery plugin has been removed",
 					   PLUGIN_NAME);
+		if (libpython_handle)
+		{
+			dlclose(libpython_handle);
+		}
 	}
 
 	// Cleanup memory
@@ -227,6 +237,17 @@ void interpreterStart(NotifyPython35* notify)
 	// Check first the interpreter is already set
 	if (!Py_IsInitialized())
 	{
+#ifdef PLUGIN_PYTHON_SHARED_LIBRARY
+		string openLibrary = TO_STRING(PLUGIN_PYTHON_SHARED_LIBRARY);
+		if (!openLibrary.empty())
+		{
+			libpython_handle = dlopen(openLibrary.c_str(),
+						  RTLD_LAZY | RTLD_GLOBAL);
+			Logger::getLogger()->info("Pre-loading of library '%s' "
+						  "is needed on this system",
+						  openLibrary.c_str());
+		}
+#endif
 		Py_Initialize();
 		Logger::getLogger()->debug("Python35 interpreter for '%s' "
 					   "delivery plugin has been initialized",
