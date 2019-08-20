@@ -59,14 +59,14 @@ const char *default_config = QUOTE({
 		"description" : "Python 3.5 configuration.", 
 		"type" : "JSON", 
 		"displayName" : "Configuration",
-		"order" : "1", 
+		"order" : "2",
 		"default" : "{}"
 		}, 
 	"script" : {
 		"description" : "Python 3.5 script to load.", 
 		"type": "script", 
 		"displayName" : "Python script",
-		"order" : "2", 
+		"order" : "1",
 		"default": ""
 		}
 	});
