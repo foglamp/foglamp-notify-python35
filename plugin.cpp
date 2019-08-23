@@ -188,15 +188,16 @@ void plugin_shutdown(PLUGIN_HANDLE *handle)
 {
 	NotifyPython35* notify = (NotifyPython35 *) handle;
 
-	// Decrement pModule reference count
-	Py_CLEAR(notify->m_pModule);
-	// Decrement pFunc reference count
-	Py_CLEAR(notify->m_pFunc);
-
 	// Cleanup Python 3.5
-	if (Py_IsInitialized)
+	if (Py_IsInitialized())
 	{
+		// Decrement pModule reference count
+		Py_CLEAR(notify->m_pModule);
+		// Decrement pFunc reference count
+		Py_CLEAR(notify->m_pFunc);
+
 		Py_Finalize();
+
 		Logger::getLogger()->debug("Python35 interpreter for '%s' "
 					   "delivery plugin has been removed",
 					   PLUGIN_NAME);
