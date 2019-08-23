@@ -207,7 +207,7 @@ void plugin_shutdown(PLUGIN_HANDLE *handle)
 	Py_CLEAR(notify->m_pFunc);
 
 	// Cleanup Python 3.5
-	if (Py_IsInitialized)
+	if (Py_IsInitialized())
 	{
 		Py_Finalize();
 		Logger::getLogger()->debug("Python35 interpreter for '%s' "
