@@ -188,6 +188,19 @@ void plugin_shutdown(PLUGIN_HANDLE *handle)
 {
 	NotifyPython35* notify = (NotifyPython35 *) handle;
 
+	if (!Py_IsInitialized())
+	{
+		if (libpython_handle)
+		{
+				dlclose(libpython_handle);
+		}
+
+		// Cleanup memory
+		delete notify;
+
+		return;
+	}
+
 	// Decrement pModule reference count
 	Py_CLEAR(notify->m_pModule);
 	// Decrement pFunc reference count
