@@ -296,10 +296,10 @@ bool NotifyPython35::notify(const std::string& deliveryName,
 			    const string& triggerReason,
 			    const string& customMessage)
 {
-	//lock_guard<mutex> guard(m_configMutex);
+	lock_guard<mutex> guard(m_configMutex);
 	bool ret = false;
 
-        if (!m_enabled)
+        if (!m_enabled && !Py_IsInitialized())
         {
                 // Current plugin is not active: just return
                 return false;
