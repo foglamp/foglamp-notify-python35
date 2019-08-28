@@ -217,16 +217,31 @@ bool NotifyPython35::reconfigure(const std::string& newConfig)
 
 	// Reimport module
 	PyObject* newModule = PyImport_ReloadModule(m_pModule);
+	if (newModule)
+	{
+		// Cleanup Loaded module
+		Py_CLEAR(m_pModule);
+		m_pModule = NULL;
+		Py_CLEAR(m_pFunc);
+		m_pFunc = NULL;
+		m_pythonScript.clear();
 
-	// Cleanup Loaded module
-	Py_CLEAR(m_pModule);
-	m_pModule = NULL;
-	Py_CLEAR(m_pFunc);
-	m_pFunc = NULL;
-	m_pythonScript.clear();
+		// Set reloaded module
+		m_pModule = newModule;
+	}
+	else
+	{
+                // Errors while reloading the Python module
+		Logger::getLogger()->error("%s notification error while reloading "
+					   " Python script '%s' in 'plugin_reconfigure'",
+					   PLUGIN_NAME,
+					   m_pythonScript.c_str());
+		logErrorMessage();
 
-	// Set reloaded module
-	m_pModule = newModule;
+		PyGILState_Release(state);
+
+		return false;
+	}
 
 	// Set the enable flag
         if (category.itemExists("enable"))

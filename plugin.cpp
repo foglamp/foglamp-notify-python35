@@ -123,9 +123,21 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config)
 		{
 			libpython_handle = dlopen(openLibrary.c_str(),
 						  RTLD_LAZY | RTLD_GLOBAL);
-			Logger::getLogger()->info("Pre-loading of library '%s' "
-						  "is needed on this system",
-						  openLibrary.c_str());
+			if (libpython_handle)
+			{
+				Logger::getLogger()->info("Pre-loading of library '%s' "
+							  "is needed on this system",
+							  openLibrary.c_str());
+			}
+			else
+			{
+				Logger::getLogger()->fatal("Error while pre-loading of library '%s': %s",
+							   openLibrary.c_str(),
+							   dlerror());
+				// Free object
+				delete notify;
+				return NULL;
+			}
 		}
 #endif
 		Py_Initialize();
@@ -235,7 +247,9 @@ void plugin_shutdown(PLUGIN_HANDLE *handle)
 	// Decrement pModule reference count
 	Py_CLEAR(notify->m_pModule);
 	// Decrement pFunc reference count
-	Py_CLEAR(notify->m_pFunc);	
+	Py_CLEAR(notify->m_pFunc);
+
+	PyGILState_Release(state); // release GIL
 
 	// Cleanup Python 3.5
 	if (notify->m_init)
