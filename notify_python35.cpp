@@ -229,6 +229,13 @@ bool NotifyPython35::reconfigure(const std::string& newConfig)
 			if (found != std::string::npos)
 			{
 				newScript = newScript.substr(found + 1);
+
+				// Remove .py from pythonScript
+				found = newScript.rfind(PYTHON_SCRIPT_FILENAME_EXTENSION);
+				if (found != std::string::npos)
+				{
+					newScript.replace(found, strlen(PYTHON_SCRIPT_FILENAME_EXTENSION), "");
+				}
 			}
 		}
 		catch (ConfigItemAttributeNotFound* e)
