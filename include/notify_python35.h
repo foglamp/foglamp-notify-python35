@@ -62,6 +62,8 @@ class NotifyPython35
 		PyObject*	m_pModule;
 		// Python 3.5 callable method handle
 		PyObject*	m_pFunc;
+		// Python interpreter has been started by this plugin
+		bool		m_init;
 
 	private:
 		bool		m_enabled;

@@ -73,9 +73,6 @@ const char *default_config = QUOTE({
 
 using namespace std;
 
-// Call Python3.5 interpreter
-void interpreterStart(NotifyPython35* notify);
-
 /**
  * The Delivery plugin interface
  */
@@ -111,21 +108,82 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config)
 	// Instantiate plugin class
 	NotifyPython35* notify = new NotifyPython35(config);
 
-	// Setup Python 3.5 interpreter
-	interpreterStart(notify);
+	// Embedded Python 3.5 program name
+	wchar_t *programName = Py_DecodeLocale(config->getName().c_str(), NULL);
+        Py_SetProgramName(programName);
+	PyMem_RawFree(programName);
+
+	// Embedded Python 3.5 initialisation
+	// Check first the interpreter is already set
+	if (!Py_IsInitialized())
+	{
+#ifdef PLUGIN_PYTHON_SHARED_LIBRARY
+		string openLibrary = TO_STRING(PLUGIN_PYTHON_SHARED_LIBRARY);
+		if (!openLibrary.empty())
+		{
+			libpython_handle = dlopen(openLibrary.c_str(),
+						  RTLD_LAZY | RTLD_GLOBAL);
+			if (libpython_handle)
+			{
+				Logger::getLogger()->info("Pre-loading of library '%s' "
+							  "is needed on this system",
+							  openLibrary.c_str());
+			}
+			else
+			{
+				Logger::getLogger()->fatal("Error while pre-loading of library '%s': %s",
+							   openLibrary.c_str(),
+							   dlerror());
+				// Free object
+				delete notify;
+				return NULL;
+			}
+		}
+#endif
+		Py_Initialize();
+		PyEval_InitThreads(); // Initialize and acquire the global interpreter lock (GIL)
+		PyThreadState* save = PyEval_SaveThread(); // release GIL
+		notify->m_init = true;
+
+		Logger::getLogger()->debug("Python interpteter is being initialised by "
+					   "delivery plugin (%s), name %s",
+					   PLUGIN_NAME,
+					   config->getName().c_str());
+	}
+
+	PyGILState_STATE state = PyGILState_Ensure(); // acquire GIL
+
+	// Add scripts dir: pass FogLAMP Data dir
+	notify->setScriptsPath(getDataDir());
+
+	// Set Python path for embedded Python 3.5
+	// Get current sys.path. borrowed reference
+	PyObject* sysPath = PySys_GetObject((char *)string("path").c_str());
+	// Add FogLAMP python scripts path
+	PyObject* pPath = PyUnicode_DecodeFSDefault((char *)notify->getScriptsPath().c_str());
+	PyList_Insert(sysPath, 0, pPath);
+	// Remove temp object
+	Py_CLEAR(pPath);
+
+	// Check first we have a Python script to load
+	if (notify->getScriptName().empty())
+	{
+		// Force disable
+		notify->disableDelivery();
+	}
 
 	// Configure plugin
 	notify->lock();
 	bool ret = notify->configure();
 	notify->unlock();
 
-	// Configure check
 	if (!ret)
 	{
 		// Cleanup Python 3.5
-		if (Py_IsInitialized())
+		if (notify->m_init)
 		{
-			Py_Finalize();
+			notify->m_init = false;
+
 			if (libpython_handle)
 			{
 				dlclose(libpython_handle);
@@ -134,14 +192,12 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config)
 
 		// Free object
 		delete notify;
-		// This will abort the plugin init
-		return NULL;
 	}
-	else
-	{
-		// Return plugin handle
-		return (PLUGIN_HANDLE)notify;
-	}
+
+	PyGILState_Release(state); // release GIL
+
+	// Return plugin handle: NULL will abort the plugin init
+	return ret ? (PLUGIN_HANDLE)notify : NULL;
 }
 
 /**
@@ -161,17 +217,14 @@ bool plugin_deliver(PLUGIN_HANDLE handle,
 {
 	NotifyPython35* notify = (NotifyPython35 *) handle;
 
-	// Check wether Python 3.5 interpreter is set
-	// It can be unset due to notification instance enable/disable via API
-	if (!Py_IsInitialized())
-	{
-		// Start the interpreter
-		interpreterStart(notify);
+	// Protect against reconfiguration
+	notify->lock();
+	bool enabled = notify->isEnabled();
+	notify->unlock();
 
-		// Apply configuration
-		notify->lock();
-		notify->configure();
-		notify->unlock();
+	if (!enabled)
+	{
+		return false;
 	}
 
 	// Call notify method
@@ -188,22 +241,26 @@ void plugin_shutdown(PLUGIN_HANDLE *handle)
 {
 	NotifyPython35* notify = (NotifyPython35 *) handle;
 
-	// Cleanup Python 3.5
 	if (Py_IsInitialized())
 	{
+		PyGILState_STATE state = PyGILState_Ensure();
+
 		// Decrement pModule reference count
 		Py_CLEAR(notify->m_pModule);
 		// Decrement pFunc reference count
 		Py_CLEAR(notify->m_pFunc);
 
-		Py_Finalize();
+		PyGILState_Release(state); // release GIL
 
-		Logger::getLogger()->debug("Python35 interpreter for '%s' "
-					   "delivery plugin has been removed",
-					   PLUGIN_NAME);
-		if (libpython_handle)
+		// Cleanup Python 3.5
+		if (notify->m_init)
 		{
-			dlclose(libpython_handle);
+			notify->m_init = false;
+
+			if (libpython_handle)
+			{
+				dlclose(libpython_handle);
+			}
 		}
 	}
 
@@ -224,58 +281,3 @@ void plugin_reconfigure(PLUGIN_HANDLE *handle,
 
 // End of extern "C"
 };
-
-/**
- * Start the Python 3.5 interpreter
- * and set scripts path and script name
- *
- * @param    notify		The notification class
- *				the plugin is using
- */
-void interpreterStart(NotifyPython35* notify)
-{
-	//Embedded Python 3.5 initialisation
-	// Check first the interpreter is already set
-	if (!Py_IsInitialized())
-	{
-#ifdef PLUGIN_PYTHON_SHARED_LIBRARY
-		string openLibrary = TO_STRING(PLUGIN_PYTHON_SHARED_LIBRARY);
-		if (!openLibrary.empty())
-		{
-			libpython_handle = dlopen(openLibrary.c_str(),
-						  RTLD_LAZY | RTLD_GLOBAL);
-			Logger::getLogger()->info("Pre-loading of library '%s' "
-						  "is needed on this system",
-						  openLibrary.c_str());
-		}
-#endif
-		Py_Initialize();
-		Logger::getLogger()->debug("Python35 interpreter for '%s' "
-					   "delivery plugin has been initialized",
-					   PLUGIN_NAME);
-	}
-
-	// Embedded Python 3.5 program name
-	wchar_t *pName = Py_DecodeLocale(notify->getName().c_str(), NULL);
-	Py_SetProgramName(pName);
-	PyMem_RawFree(pName);
-
-	// Add scripts dir: pass FogLAMP Data dir
-	notify->setScriptsPath(getDataDir());
-
-	// Set Python path for embedded Python 3.5
-	// Get current sys.path. borrowed reference
-	PyObject* sysPath = PySys_GetObject((char *)string("path").c_str());
-	// Add FogLAMP python scripts path
-	PyObject* pPath = PyUnicode_DecodeFSDefault((char *)notify->getScriptsPath().c_str());
-	PyList_Insert(sysPath, 0, pPath);
-	// Remove temp object
-	Py_CLEAR(pPath);
-
-	// Check first we have a Python script to load
-	if (notify->getScriptName().empty())
-	{
-		// Force disable
-		notify->disableDelivery();
-	}
-}
