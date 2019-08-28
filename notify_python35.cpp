@@ -225,7 +225,7 @@ bool NotifyPython35::reconfigure(const std::string& newConfig)
 			newScript = category.getItemAttribute(SCRIPT_CONFIG_ITEM_NAME,
 								   ConfigCategory::FILE_ATTR);
 		        // Just take file name and remove path
-			std::size_t found = m_pythonScript.find_last_of("/");
+			std::size_t found = newScript.find_last_of("/");
 			if (found != std::string::npos)
 			{
 				newScript = m_pythonScript.substr(found + 1);
