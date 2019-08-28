@@ -30,7 +30,7 @@ using namespace std;
  */
 NotifyPython35::NotifyPython35(ConfigCategory *category)
 {
-	// Configuration set is protected by a lock
+	m_init = false;
 	m_enabled = false;
 	m_pModule = NULL;
 	m_pFunc = NULL;
