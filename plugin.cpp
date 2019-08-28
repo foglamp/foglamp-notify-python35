@@ -183,7 +183,6 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config)
 		if (notify->m_init)
 		{
 			notify->m_init = false;
-			Py_Finalize();
 
 			if (libpython_handle)
 			{
@@ -242,30 +241,27 @@ void plugin_shutdown(PLUGIN_HANDLE *handle)
 {
 	NotifyPython35* notify = (NotifyPython35 *) handle;
 
-	PyGILState_STATE state = PyGILState_Ensure();
-
-	// Decrement pModule reference count
-	Py_CLEAR(notify->m_pModule);
-	// Decrement pFunc reference count
-	Py_CLEAR(notify->m_pFunc);
-
-	PyGILState_Release(state); // release GIL
-
-	// Cleanup Python 3.5
-	if (notify->m_init)
+	if (Py_IsInitialized())
 	{
-		notify->m_init = false;
+		PyGILState_STATE state = PyGILState_Ensure();
 
-		Py_Finalize();
+		// Decrement pModule reference count
+		Py_CLEAR(notify->m_pModule);
+		// Decrement pFunc reference count
+		Py_CLEAR(notify->m_pFunc);
 
-		if (libpython_handle)
+		PyGILState_Release(state); // release GIL
+
+		// Cleanup Python 3.5
+		if (notify->m_init)
 		{
-			dlclose(libpython_handle);
-		}
+			notify->m_init = false;
 
-		Logger::getLogger()->debug("Python35 interpreter for '%s' "
-					   "delivery plugin has been removed",
-					   PLUGIN_NAME);
+			if (libpython_handle)
+			{
+				dlclose(libpython_handle);
+			}
+		}
 	}
 
 	// Cleanup memory
