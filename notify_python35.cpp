@@ -21,20 +21,16 @@
 #define PYTHON_SCRIPT_FILENAME_EXTENSION ".py"
 #define SCRIPT_CONFIG_ITEM_NAME "script"
 
-extern void interpreterStart(NotifyPython35* notify);
-
 using namespace std;
 
 /**
  * NotifyPython35 class constructor
  *
- * @param category	The configuration of the idelivery plugin
+ * @param category	The configuration of the delivery plugin
  */
 NotifyPython35::NotifyPython35(ConfigCategory *category)
 {
-	// Configuration set is protected by a lock
-	lock_guard<mutex> guard(m_configMutex);
-
+	m_init = false;
 	m_enabled = false;
 	m_pModule = NULL;
 	m_pFunc = NULL;
@@ -93,10 +89,10 @@ NotifyPython35::~NotifyPython35()
 }
 
 /**
- * Configure Python35 filter:
+ * Configure Python35 plugin:
  *
  * import the Python script file and call
- * script configuration method with current filter configuration
+ * script configuration method with current plugin configuration
  *
  * This method must be called while holding the configuration mutex
  *
@@ -151,14 +147,11 @@ bool NotifyPython35::configure()
 		return true;
 	}
 
-	// Check the Python interpreter is set
-	if (!Py_IsInitialized())
+	// 2) Import Python script if module object is not set
+	if (!m_pModule)
 	{
-		interpreterStart(this);
+		m_pModule = PyImport_ImportModule(m_pythonScript.c_str());
 	}
-
-	// Import Python 3.5 module
-	m_pModule = PyImport_ImportModule(m_pythonScript.c_str());
 
 	// Check whether the Python module has been imported
 	if (!m_pModule)
@@ -220,19 +213,34 @@ bool NotifyPython35::reconfigure(const std::string& newConfig)
 	// Configuration change is protected by a lock
 	lock_guard<mutex> guard(m_configMutex);
 
-	if (Py_IsInitialized())
+	PyGILState_STATE state = PyGILState_Ensure(); // acquire GIL
+
+	// Reimport module
+	PyObject* newModule = PyImport_ReloadModule(m_pModule);
+	if (newModule)
 	{
-		// Cleanup Loaded module first
+		// Cleanup Loaded module
 		Py_CLEAR(m_pModule);
 		m_pModule = NULL;
 		Py_CLEAR(m_pFunc);
 		m_pFunc = NULL;
 		m_pythonScript.clear();
 
-		// Remove Interpreter
-		Py_Finalize();
-		// Start interpreter, setting paths etc
-		interpreterStart(this);
+		// Set reloaded module
+		m_pModule = newModule;
+	}
+	else
+	{
+                // Errors while reloading the Python module
+		Logger::getLogger()->error("%s notification error while reloading "
+					   " Python script '%s' in 'plugin_reconfigure'",
+					   PLUGIN_NAME,
+					   m_pythonScript.c_str());
+		logErrorMessage();
+
+		PyGILState_Release(state);
+
+		return false;
 	}
 
 	// Set the enable flag
@@ -278,10 +286,16 @@ bool NotifyPython35::reconfigure(const std::string& newConfig)
 		// Force disable
 		this->disableDelivery();
 
+		PyGILState_Release(state);
+
 		return false;
 	}
 
-	return this->configure();
+	bool ret = this->configure();
+
+	PyGILState_Release(state);
+
+	return ret;
 }
 
 
@@ -297,32 +311,21 @@ bool NotifyPython35::notify(const std::string& deliveryName,
 			    const string& triggerReason,
 			    const string& customMessage)
 {
+	lock_guard<mutex> guard(m_configMutex);
 	bool ret = false;
 
-	if (!Py_IsInitialized())
-	{
-		Logger::getLogger()->fatal("%s delivery plugin: Python 3.5 interpreter "
-					   "is not initialized",
-					   this->getName().c_str());
-		return false;
-	}
-
-	m_configMutex.lock();
-        if (!m_enabled)
+        if (!m_enabled && !Py_IsInitialized())
         {
-                // Release lock
-                m_configMutex.unlock();
-                // Current filter is not active: just return
+                // Current plugin is not active: just return
                 return false;
         }
+
+	PyGILState_STATE state = PyGILState_Ensure();
 
 	// Save configuration variables and Python objects
 	string name = m_name;
 	string scriptName = m_pythonScript;
 	PyObject* method = m_pFunc;
-
-	// Release lock
-	m_configMutex.unlock();
 
 	// Call Python method passing an object
 	PyObject* pReturn = PyObject_CallFunction(method,
@@ -333,12 +336,11 @@ bool NotifyPython35::notify(const std::string& deliveryName,
 	if (!pReturn)
 	{
 		// Errors while getting result object
-		Logger::getLogger()->error("Notification plugin '%s' (%s), script '%s', "
-					   "filter error, action: %s",
+		Logger::getLogger()->error("Notification plugin '%s' (%s), error in script '%s', "
+					   "error",
 					   PLUGIN_NAME,
 					   name.c_str(),
-					   scriptName.c_str(),
-					   "pass unfiltered data onwards");
+					   scriptName.c_str());
 
 		// Errors while getting result object
 		logErrorMessage();
@@ -356,6 +358,8 @@ bool NotifyPython35::notify(const std::string& deliveryName,
 				   "called, return = %d",
 				   this->getName().c_str(),
 				   ret);
+
+	PyGILState_Release(state);
 
 	return ret;
 }
