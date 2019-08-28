@@ -228,7 +228,7 @@ bool NotifyPython35::reconfigure(const std::string& newConfig)
 			std::size_t found = newScript.find_last_of("/");
 			if (found != std::string::npos)
 			{
-				newScript = m_pythonScript.substr(found + 1);
+				newScript = newScript.substr(found + 1);
 			}
 		}
 		catch (ConfigItemAttributeNotFound* e)
