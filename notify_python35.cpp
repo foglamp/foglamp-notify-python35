@@ -209,60 +209,33 @@ bool NotifyPython35::reconfigure(const std::string& newConfig)
 				   newConfig.c_str());
 
 	ConfigCategory category("new", newConfig);
+	string newScript;
 
 	// Configuration change is protected by a lock
 	lock_guard<mutex> guard(m_configMutex);
 
 	PyGILState_STATE state = PyGILState_Ensure(); // acquire GIL
 
-	// Reimport module
-	PyObject* newModule = PyImport_ReloadModule(m_pModule);
-	if (newModule)
-	{
-		// Cleanup Loaded module
-		Py_CLEAR(m_pModule);
-		m_pModule = NULL;
-		Py_CLEAR(m_pFunc);
-		m_pFunc = NULL;
-		m_pythonScript.clear();
-
-		// Set reloaded module
-		m_pModule = newModule;
-	}
-	else
-	{
-                // Errors while reloading the Python module
-		Logger::getLogger()->error("%s notification error while reloading "
-					   " Python script '%s' in 'plugin_reconfigure'",
-					   PLUGIN_NAME,
-					   m_pythonScript.c_str());
-		logErrorMessage();
-
-		PyGILState_Release(state);
-
-		return false;
-	}
-
-	// Set the enable flag
-        if (category.itemExists("enable"))
-        {
-                m_enabled = category.getValue("enable").compare("true") == 0 ||
-                            category.getValue("enable").compare("True") == 0;
-        }
-
-	// Check whether we have a Python 3.5 script file to import
+	// Get Python script file from "file" attibute of "scipt" item
 	if (category.itemExists(SCRIPT_CONFIG_ITEM_NAME))
 	{
 		try
 		{
 			// Get Python script file from "file" attibute of "scipt" item
-			m_pythonScript = category.getItemAttribute(SCRIPT_CONFIG_ITEM_NAME,
+			newScript = category.getItemAttribute(SCRIPT_CONFIG_ITEM_NAME,
 								   ConfigCategory::FILE_ATTR);
 		        // Just take file name and remove path
-			std::size_t found = m_pythonScript.find_last_of("/");
+			std::size_t found = newScript.find_last_of("/");
 			if (found != std::string::npos)
 			{
-				m_pythonScript = m_pythonScript.substr(found + 1);
+				newScript = newScript.substr(found + 1);
+
+				// Remove .py from pythonScript
+				found = newScript.rfind(PYTHON_SCRIPT_FILENAME_EXTENSION);
+				if (found != std::string::npos)
+				{
+					newScript.replace(found, strlen(PYTHON_SCRIPT_FILENAME_EXTENSION), "");
+				}
 			}
 		}
 		catch (ConfigItemAttributeNotFound* e)
@@ -275,7 +248,7 @@ bool NotifyPython35::reconfigure(const std::string& newConfig)
 		}
 	}
 
-	if (m_pythonScript.empty())
+	if (newScript.empty())
 	{
 		Logger::getLogger()->warn("Notification plugin '%s', "
 					  "called without a Python 3.5 script. "
@@ -289,6 +262,66 @@ bool NotifyPython35::reconfigure(const std::string& newConfig)
 		PyGILState_Release(state);
 
 		return false;
+	}
+
+	// Reload module or Import module ?
+	if (newScript.compare(m_pythonScript) == 0)
+	{
+		// Reimport module
+		PyObject* newModule = PyImport_ReloadModule(m_pModule);
+		if (newModule)
+		{
+			// Cleanup Loaded module
+			Py_CLEAR(m_pModule);
+			m_pModule = NULL;
+			Py_CLEAR(m_pFunc);
+			m_pFunc = NULL;
+
+			// Set new name
+			m_pythonScript = newScript;
+
+			// Set reloaded module
+			m_pModule = newModule;
+		}
+		else
+		{
+			// Errors while reloading the Python module
+			Logger::getLogger()->error("%s notification error while reloading "
+						   " Python script '%s' in 'plugin_reconfigure'",
+						   PLUGIN_NAME,
+						   m_pythonScript.c_str());
+			logErrorMessage();
+
+			PyGILState_Release(state);
+
+			return false;
+		}
+	}
+	else
+	{
+		// Import the new module
+
+		// Cleanup Loaded module
+		Py_CLEAR(m_pModule);
+		m_pModule = NULL;
+		Py_CLEAR(m_pFunc);
+		m_pFunc = NULL;
+
+		// Set new name
+		m_pythonScript = newScript;
+
+		// Import the new module
+		PyObject* newModule = PyImport_ImportModule(m_pythonScript.c_str());
+
+		// Set reloaded module
+		m_pModule = newModule;
+	}
+
+	// Set the enable flag
+	if (category.itemExists("enable"))
+	{
+		m_enabled = category.getValue("enable").compare("true") == 0 ||
+			    category.getValue("enable").compare("True") == 0;
 	}
 
 	bool ret = this->configure();
