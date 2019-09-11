@@ -1,5 +1,5 @@
 """
-FogLAMP notification handling script in Python 3.5
+Fledge notification handling script in Python 3.5
 """
 
 __author__ = "Amandeep Singh Arora"
@@ -14,7 +14,7 @@ from logging.handlers import SysLogHandler
 logger = logging.getLogger(__name__)
 handler = SysLogHandler(address='/dev/log')
 
-formatter = logging.Formatter(fmt='FogLAMP[%(process)d] %(levelname)s: %(name)s: %(message)s')
+formatter = logging.Formatter(fmt='Fledge[%(process)d] %(levelname)s: %(name)s: %(message)s')
 handler.setFormatter(formatter)
 
 logger.setLevel(logging.INFO)

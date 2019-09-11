@@ -1,5 +1,5 @@
 /*
- * FogLAMP "Notify Python35" class
+ * Fledge "Notify Python35" class
  *
  * Copyright (c) 2019 Dianomic Systems
  *

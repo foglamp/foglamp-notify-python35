@@ -1,5 +1,5 @@
 /*
- * FogLAMP "Python 3.5" notification plugin.
+ * Fledge "Python 3.5" notification plugin.
  *
  * Copyright (c) 2018 Dianomic Systems
  *
@@ -31,7 +31,7 @@ static void* libpython_handle = NULL;
  *
  * Example:
  * if filename is 'notify_alert.py', just set 'notify_alert'
- * via FogLAMP configuration manager
+ * via Fledge configuration manager
  *
  * Note:
  * Python 3.5 delivery plugin code needs only one method which accepts
@@ -153,13 +153,13 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config)
 
 	PyGILState_STATE state = PyGILState_Ensure(); // acquire GIL
 
-	// Add scripts dir: pass FogLAMP Data dir
+	// Add scripts dir: pass Fledge Data dir
 	notify->setScriptsPath(getDataDir());
 
 	// Set Python path for embedded Python 3.5
 	// Get current sys.path. borrowed reference
 	PyObject* sysPath = PySys_GetObject((char *)string("path").c_str());
-	// Add FogLAMP python scripts path
+	// Add Fledge python scripts path
 	PyObject* pPath = PyUnicode_DecodeFSDefault((char *)notify->getScriptsPath().c_str());
 	PyList_Insert(sysPath, 0, pPath);
 	// Remove temp object

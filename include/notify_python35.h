@@ -1,7 +1,7 @@
 #ifndef _PYTHON35_FILTER_H
 #define _PYTHON35_FILTER_H
 /*
- * FogLAMP "Python 3.5" filter class.
+ * Fledge "Python 3.5" filter class.
  *
  * Copyright (c) 2019 Dianomic Systems
  *
@@ -19,7 +19,7 @@
 
 #define PLUGIN_NAME "python35"
 
-// Relative path to FOGLAMP_DATA
+// Relative path to FLEDGE_DATA
 #define PYTHON_FILTERS_PATH "/scripts"
 
 /**
@@ -38,10 +38,10 @@ class NotifyPython35
 				const std::string& message);
 
 		const std::string& getName() { return m_name; };
-		// Set the additional path for Python3.5 Foglamp scripts
+		// Set the additional path for Python3.5 Fledge scripts
 		void	setScriptsPath(const std::string& dataDir)
 		{
-			// Set FogLAMP dataDir + filters dir
+			// Set Fledge dataDir + filters dir
 			m_scriptsPath = dataDir + PYTHON_FILTERS_PATH;
 		}
 
