@@ -23,6 +23,8 @@
 
 #include "notify_python35.h"
 
+static void* libpython_handle = NULL;
+
 /**
  * The Python 3.5 script module to load is set in
  * 'script' config item and it doesn't need the trailing .py
@@ -36,10 +38,6 @@
  * a message string indicating notification trigger and processes 
  * the same as required.
  */
-#define TO_STRING(...) DEFER(TO_STRING_)(__VA_ARGS__)
-#define DEFER(x) x
-#define TO_STRING_(...) #__VA_ARGS__
-#define QUOTE(...) TO_STRING(__VA_ARGS__)
 
 
 // Delivery plugin default configuration
@@ -61,22 +59,19 @@ const char *default_config = QUOTE({
 		"description" : "Python 3.5 configuration.", 
 		"type" : "JSON", 
 		"displayName" : "Configuration",
-		"order" : "1", 
+		"order" : "2",
 		"default" : "{}"
 		}, 
 	"script" : {
 		"description" : "Python 3.5 script to load.", 
 		"type": "script", 
 		"displayName" : "Python script",
-		"order" : "2", 
+		"order" : "1",
 		"default": ""
 		}
 	});
 
 using namespace std;
-
-// Call Python3.5 interpreter
-void interpreterStart(NotifyPython35* notify);
 
 /**
  * The Delivery plugin interface
@@ -113,134 +108,50 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config)
 	// Instantiate plugin class
 	NotifyPython35* notify = new NotifyPython35(config);
 
-	// Setup Python 3.5 interpreter
-	interpreterStart(notify);
+	// Embedded Python 3.5 program name
+	wchar_t *programName = Py_DecodeLocale(config->getName().c_str(), NULL);
+        Py_SetProgramName(programName);
+	PyMem_RawFree(programName);
 
-	// Configure plugin
-	notify->lock();
-	bool ret = notify->configure();
-	notify->unlock();
-
-	// Configure check
-	if (!ret)
-	{
-		// Cleanup Python 3.5
-		if (Py_IsInitialized())
-		{
-			Py_Finalize();
-		}
-
-		// Free object
-		delete notify;
-		// This will abort the plugin init
-		return NULL;
-	}
-	else
-	{
-		// Return plugin handle
-		return (PLUGIN_HANDLE)notify;
-	}
-}
-
-/**
- * Deliver received notification data
- *
- * @param handle		The plugin handle returned from plugin_init
- * @param deliveryName		The delivery category name
- * @param notificationName	The notification name
- * @param triggerReason		The trigger reason for notification
- * @param message		The message from notification
- */
-bool plugin_deliver(PLUGIN_HANDLE handle,
-                    const std::string& deliveryName,
-                    const std::string& notificationName,
-                    const std::string& triggerReason,
-                    const std::string& message)
-{
-	NotifyPython35* notify = (NotifyPython35 *) handle;
-
-	// Check wether Python 3.5 interpreter is set
-	// It can be unset due to notification instance enable/disable via API
-	if (!Py_IsInitialized())
-	{
-		// Start the interpreter
-		interpreterStart(notify);
-
-		// Apply configuration
-		notify->lock();
-		notify->configure();
-		notify->unlock();
-	}
-
-	// Call notify method
-	return notify->notify(deliveryName,
-			      notificationName,
-			      triggerReason,
-			      message);
-}
-
-/**
- * Call the shutdown method in the plugin
- */
-void plugin_shutdown(PLUGIN_HANDLE *handle)
-{
-	NotifyPython35* notify = (NotifyPython35 *) handle;
-
-	// Decrement pModule reference count
-	Py_CLEAR(notify->m_pModule);
-	// Decrement pFunc reference count
-	Py_CLEAR(notify->m_pFunc);
-
-	// Cleanup Python 3.5
-	if (Py_IsInitialized)
-	{
-		Py_Finalize();
-		Logger::getLogger()->debug("Python35 interpreter for '%s' "
-					   "delivery plugin has been removed",
-					   PLUGIN_NAME);
-	}
-
-	// Cleanup memory
-	delete notify;
-}
-
-/**
- * Reconfigure the plugin
- */
-void plugin_reconfigure(PLUGIN_HANDLE *handle,
-			string& newConfig)
-{
-	NotifyPython35* notify = (NotifyPython35 *)handle;
-	
-	notify->reconfigure(newConfig);
-}
-
-// End of extern "C"
-};
-
-/**
- * Start the Python 3.5 interpreter
- * and set scripts path and script name
- *
- * @param    notify		The notification class
- *				the plugin is using
- */
-void interpreterStart(NotifyPython35* notify)
-{
-	//Embedded Python 3.5 initialisation
+	// Embedded Python 3.5 initialisation
 	// Check first the interpreter is already set
 	if (!Py_IsInitialized())
 	{
+#ifdef PLUGIN_PYTHON_SHARED_LIBRARY
+		string openLibrary = TO_STRING(PLUGIN_PYTHON_SHARED_LIBRARY);
+		if (!openLibrary.empty())
+		{
+			libpython_handle = dlopen(openLibrary.c_str(),
+						  RTLD_LAZY | RTLD_GLOBAL);
+			if (libpython_handle)
+			{
+				Logger::getLogger()->info("Pre-loading of library '%s' "
+							  "is needed on this system",
+							  openLibrary.c_str());
+			}
+			else
+			{
+				Logger::getLogger()->fatal("Error while pre-loading of library '%s': %s",
+							   openLibrary.c_str(),
+							   dlerror());
+				// Free object
+				delete notify;
+				return NULL;
+			}
+		}
+#endif
 		Py_Initialize();
-		Logger::getLogger()->debug("Python35 interpreter for '%s' "
-					   "delivery plugin has been initialized",
-					   PLUGIN_NAME);
+		PyEval_InitThreads(); // Initialize and acquire the global interpreter lock (GIL)
+		PyThreadState* save = PyEval_SaveThread(); // release GIL
+		notify->m_init = true;
+
+		Logger::getLogger()->debug("Python interpteter is being initialised by "
+					   "delivery plugin (%s), name %s",
+					   PLUGIN_NAME,
+					   config->getName().c_str());
 	}
 
-	// Embedded Python 3.5 program name
-	wchar_t *pName = Py_DecodeLocale(notify->getName().c_str(), NULL);
-	Py_SetProgramName(pName);
-	PyMem_RawFree(pName);
+	PyGILState_STATE state = PyGILState_Ensure(); // acquire GIL
 
 	// Add scripts dir: pass FogLAMP Data dir
 	notify->setScriptsPath(getDataDir());
@@ -260,4 +171,113 @@ void interpreterStart(NotifyPython35* notify)
 		// Force disable
 		notify->disableDelivery();
 	}
+
+	// Configure plugin
+	notify->lock();
+	bool ret = notify->configure();
+	notify->unlock();
+
+	if (!ret)
+	{
+		// Cleanup Python 3.5
+		if (notify->m_init)
+		{
+			notify->m_init = false;
+
+			if (libpython_handle)
+			{
+				dlclose(libpython_handle);
+			}
+		}
+
+		// Free object
+		delete notify;
+	}
+
+	PyGILState_Release(state); // release GIL
+
+	// Return plugin handle: NULL will abort the plugin init
+	return ret ? (PLUGIN_HANDLE)notify : NULL;
 }
+
+/**
+ * Deliver received notification data
+ *
+ * @param handle		The plugin handle returned from plugin_init
+ * @param deliveryName		The delivery category name
+ * @param notificationName	The notification name
+ * @param triggerReason		The trigger reason for notification
+ * @param message		The message from notification
+ */
+bool plugin_deliver(PLUGIN_HANDLE handle,
+                    const std::string& deliveryName,
+                    const std::string& notificationName,
+                    const std::string& triggerReason,
+                    const std::string& message)
+{
+	NotifyPython35* notify = (NotifyPython35 *) handle;
+
+	// Protect against reconfiguration
+	notify->lock();
+	bool enabled = notify->isEnabled();
+	notify->unlock();
+
+	if (!enabled)
+	{
+		return false;
+	}
+
+	// Call notify method
+	return notify->notify(deliveryName,
+			      notificationName,
+			      triggerReason,
+			      message);
+}
+
+/**
+ * Call the shutdown method in the plugin
+ */
+void plugin_shutdown(PLUGIN_HANDLE *handle)
+{
+	NotifyPython35* notify = (NotifyPython35 *) handle;
+
+	if (Py_IsInitialized())
+	{
+		PyGILState_STATE state = PyGILState_Ensure();
+
+		// Decrement pModule reference count
+		Py_CLEAR(notify->m_pModule);
+		// Decrement pFunc reference count
+		Py_CLEAR(notify->m_pFunc);
+
+		PyGILState_Release(state); // release GIL
+
+		// Cleanup Python 3.5
+		if (notify->m_init)
+		{
+			notify->m_init = false;
+
+			if (libpython_handle)
+			{
+				dlclose(libpython_handle);
+			}
+		}
+	}
+
+	// Cleanup memory
+	delete notify;
+}
+
+/**
+ * Reconfigure the plugin
+ */
+void plugin_reconfigure(PLUGIN_HANDLE *handle,
+			string& newConfig)
+{
+	NotifyPython35* notify = (NotifyPython35 *)handle;
+	
+	notify->reconfigure(newConfig);
+}
+
+// End of extern "C"
+};
